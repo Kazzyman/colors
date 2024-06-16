@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-// Constants:
+// Constants for colors
 const colorReset = "\033[0m"
 const colorRed = "\033[31m"
 const colorGreen = "\033[32m"
@@ -63,7 +63,7 @@ func getColor(fileName string) string {
 
 func main() {
 	// Regular expression to parse the input line
-	lineRegex := regexp.MustCompile(`^(\d+)\s+(\S+)\s+(\d+)\s+(\S+)\s+(\d+)\s+(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})\s+(.+)$`)
+	lineRegex := regexp.MustCompile(`^(\d+)\s+(\S+)\s+(\d+)\s+(\S+)\s+(\d+)\s+(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2}:\d{2})+(\.\d{9})\s+([+-]\d{4})\s+(.+)$`)
 
 	// Read lines from standard input (assumes input from `ls` or `gls`)
 	scanner := bufio.NewScanner(os.Stdin)
@@ -78,7 +78,7 @@ func main() {
 
 		// Parse the line using regular expression
 		matches := lineRegex.FindStringSubmatch(line)
-		if len(matches) != 9 {
+		if len(matches) != 11 {
 			continue // skip lines that don't match expected format
 		}
 
@@ -94,26 +94,30 @@ func main() {
 		formattedSize := formatSize(size) // this is the string to print
 		date := matches[6]
 		time := matches[7]
-		fileName := matches[8]
+		nanoseconds := matches[8]
+		timeZone := matches[9]
+		fileName := matches[10]
 
 		// Determine color based on file name suffix
 		color := getColor(fileName)
 
+		if nanoseconds == "had to use it" {
+		}
+
 		// Print formatted line with colorized file name and aligned columns
-		/*
-			fmt.Printf("%-10s %-11s %-3s %-8s %11s %-10s %-5s %s%s%s\n",
-				blocks, permissions, links, owner, formattedSize, date, time,
+		if timeZone == "-0700" {
+			fmt.Printf("%10s %11s %4s %slinks%s %8s %12s %sbytes%s  %s %s %s %s%s%s\n",
+				blocks, permissions, links, colorCyan, colorReset, owner, formattedSize, colorCyan, colorReset, date, time, "dst",
 				color, fileName, "\033[0m", // reset color
 			)
-
-		*/
-
-		fmt.Printf("%10s %11s %4s %slinks%s %8s %12s %sbytes%s  %-10s %-5s %s%s%s\n",
-			blocks, permissions, links, colorCyan, colorReset, owner, formattedSize, colorCyan, colorReset, date, time,
-			color, fileName, "\033[0m", // reset color
-		)
-
+		} else {
+			fmt.Printf("%10s %11s %4s %slinks%s %8s %12s %sbytes%s  %s %s %s %s%s%s\n",
+				blocks, permissions, links, colorCyan, colorReset, owner, formattedSize, colorCyan, colorReset, date, time, "std",
+				color, fileName, "\033[0m", // reset color
+			)
+		}
 	}
+
 	if err := scanner.Err(); err != nil {
 		fmt.Fprintln(os.Stderr, "reading standard input:", err)
 	}

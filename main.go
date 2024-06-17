@@ -9,6 +9,12 @@ import (
 	"strings"
 )
 
+/*
+This program is meant to accept standard output via a pipe from the gls command.
+And, it is very picky re the exact number of fields etc. per line of input. i.e. :
+gls -oFGtpsrh --color=auto --time-style=full-iso --block-size=1 --group-directories-first | thisProgram
+*/
+
 // Constants for colors
 const colorReset = "\033[0m"
 const colorRed = "\033[31m"
@@ -16,6 +22,7 @@ const colorGreen = "\033[32m"
 const colorCyan = "\033[36m"
 const colorPurple = "\033[35m"
 const colorYellow = "\033[33m"
+const cyanBack = "\033[46m"
 
 // Colors for file types
 var (
@@ -51,7 +58,7 @@ func formatSize(size int64) string {
 	return strings.Join(parts, ",")
 }
 
-// Function to get color for the file name
+// Function to get color (a specified color) for each type of file
 func getColor(fileName string) string {
 	for suffix, color := range colors {
 		if strings.HasSuffix(fileName, suffix) {
@@ -63,27 +70,42 @@ func getColor(fileName string) string {
 
 func main() {
 	// Regular expression to parse the input line
-	lineRegex := regexp.MustCompile(`^(\d+)\s+(\S+)\s+(\d+)\s+(\S+)\s+(\d+)\s+(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2}:\d{2})+(\.\d{9})\s+([+-]\d{4})\s+(.+)$`)
-
-	// Read lines from standard input (assumes input from `ls` or `gls`)
-	scanner := bufio.NewScanner(os.Stdin)
+	lineRegex := regexp.MustCompile(`^(\d+)\s+(\S+)\s+(\d+)\s+(\S+)\s+(\d+)\s+(\d{4})-(\d{2})-(\d{2})\s+(\d{2}:\d{2}:\d{2})+(\.\d{9})\s+([+-]\d{4})\s+(.+)$`)
+	//                                      1        2      3       4       5         6 date 7     8       9 time h:m:s        10 nano s    11 offset      12 fileName
+	//
+	// Read from standard input (assumes specific format of input from `gls`, see prior comment).
+	scanner := bufio.NewScanner(os.Stdin) // (os.Stdin) reads from standard input
+	lineCount := 0
 	for scanner.Scan() {
 		line := scanner.Text()
 		line = strings.TrimSpace(line) // trim spaces
 
+		lineCount++
+
 		if strings.HasPrefix(line, "total") {
 			fmt.Println(line) // print "total" line as-is
-			continue
+			fmt.Printf("%s  x4096  attributes     links    owner          size        date         time        fileName%s\n", cyanBack, colorReset)
+			continue // get next line
 		}
 
 		// Parse the line using regular expression
 		matches := lineRegex.FindStringSubmatch(line)
-		if len(matches) != 11 {
-			continue // skip lines that don't match expected format
+		if len(matches) != 13 {
+			continue // skip lines that don't match expected format, i.e., lines with more or less than 11 fields
 		}
 
 		// Extract parts from the parsed line
-		blocks := matches[1]
+
+		blocks := matches[0] // matches[0] is apparently some sort of line/carriage control char, discard it elegantly on next line
+		blocks = matches[1]  // see above comment
+		// Convert len as blocks to number of blocks (one block being 4096 bytes)
+		if blocks != "0" {
+			blocksAsNumber, err1 := strconv.Atoi(blocks)
+			blocks = strconv.Itoa(blocksAsNumber / 4096)
+			if err1 != nil {
+				fmt.Println("there was an error while doing blocks conversion")
+			}
+		}
 		permissions := matches[2]
 		links := matches[3]
 		owner := matches[4]
@@ -91,34 +113,115 @@ func main() {
 		if err != nil {
 			continue // skip lines where size cannot be parsed
 		}
-		formattedSize := formatSize(size) // this is the string to print
-		date := matches[6]
-		time := matches[7]
-		nanoseconds := matches[8]
-		timeZone := matches[9]
-		fileName := matches[10]
+		formattedSize := formatSize(size) // create the comma-formatted string to print
+		dateYear := matches[6]
+		dateMonth := matches[7]
+		dateMonth = translateMonth(dateMonth) // change numeric month to Jan-Dec
+		dateDay := matches[8]
+		dateDay = replaceLeading0withSpace(dateDay) // strip leading 0s from single digit days
+		time := matches[9]
+		// nanoseconds := matches[10] // no one really wants to see nanoseconds
+		timeZone := matches[11] // actually an offset, but will use this to effect a DST/STD time attribution
+		fileName := matches[12]
 
 		// Determine color based on file name suffix
 		color := getColor(fileName)
 
-		if nanoseconds == "had to use it" {
-		}
-
 		// Print formatted line with colorized file name and aligned columns
 		if timeZone == "-0700" {
-			fmt.Printf("%10s %11s %4s %slinks%s %8s %12s %sbytes%s  %s %s %s %s%s%s\n",
-				blocks, permissions, links, colorCyan, colorReset, owner, formattedSize, colorCyan, colorReset, date, time, "dst",
+			fmt.Printf("%7s %11s %4s %slinks%s %8s %12s %sbytes%s  %s-%s-%s %s%s %s%s%s\n",
+				blocks, permissions, links, colorCyan, colorReset, owner, formattedSize, colorCyan, colorReset, dateDay, dateMonth, dateYear, time, "-dst",
 				color, fileName, "\033[0m", // reset color
 			)
 		} else {
-			fmt.Printf("%10s %11s %4s %slinks%s %8s %12s %sbytes%s  %s %s %s %s%s%s\n",
-				blocks, permissions, links, colorCyan, colorReset, owner, formattedSize, colorCyan, colorReset, date, time, "std",
+			fmt.Printf("%7s %11s %4s %slinks%s %8s %12s %sbytes%s  %s-%s-%s %s%s %s%s%s\n",
+				blocks, permissions, links, colorCyan, colorReset, owner, formattedSize, colorCyan, colorReset, dateDay, dateMonth, dateYear, time, "-std",
 				color, fileName, "\033[0m", // reset color
 			)
+		}
+
+		if lineCount > 36 {
+			lineCount = 0
+			fmt.Printf("%s  x4096  attributes     links    owner          size        date         time        fileName%s\n", cyanBack, colorReset)
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
 		fmt.Fprintln(os.Stderr, "reading standard input:", err)
 	}
+	fmt.Printf("%s  x4096  attributes     links    owner          size        date         time        fileName%s\n", cyanBack, colorReset)
+}
+
+func replaceLeading0withSpace(dateDay string) string {
+	if dateDay == "01" {
+		dateDay = " 1"
+	}
+	if dateDay == "02" {
+		dateDay = " 2"
+	}
+	if dateDay == "03" {
+		dateDay = " 3"
+	}
+	if dateDay == "04" {
+		dateDay = " 4"
+	}
+	if dateDay == "05" {
+		dateDay = " 5"
+	}
+	if dateDay == "06" {
+		dateDay = " 6"
+	}
+	if dateDay == "07" {
+		dateDay = " 7"
+	}
+	if dateDay == "08" {
+		dateDay = " 8"
+	}
+	if dateDay == "09" {
+		dateDay = " 9"
+	} else {
+		// return dateDay unchanged
+	}
+
+	return dateDay
+}
+
+func translateMonth(dateM string) string {
+	if dateM == "01" {
+		dateM = "Jan"
+	}
+	if dateM == "02" {
+		dateM = "Feb"
+	}
+	if dateM == "03" {
+		dateM = "Mar"
+	}
+	if dateM == "04" {
+		dateM = "Apr"
+	}
+	if dateM == "05" {
+		dateM = "May"
+	}
+	if dateM == "06" {
+		dateM = "Jun"
+	}
+	if dateM == "07" {
+		dateM = "Jul"
+	}
+	if dateM == "08" {
+		dateM = "Aug"
+	}
+	if dateM == "09" {
+		dateM = "Sep"
+	}
+	if dateM == "10" {
+		dateM = "Oct"
+	}
+	if dateM == "11" {
+		dateM = "Nov"
+	}
+	if dateM == "12" {
+		dateM = "Dec"
+	}
+	return dateM
 }

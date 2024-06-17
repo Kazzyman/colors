@@ -32,7 +32,7 @@ export CLICOLOR=1
 # Instead of using mundane and limited direct Aliasing for ls and gls, use these scrips. 
 alias l='~/ricks.l.sh'
 alias g='~/ricks.g.sh'
-alias dir='~/ricks.g.sh'
+alias dir='~/ricks.fl.and.fld.sh'
 
 alias cl=clear
 

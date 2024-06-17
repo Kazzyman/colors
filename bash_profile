@@ -43,6 +43,7 @@ alias cdm='cd ~/Music/Music/Media.localized/Music'
 alias gr='gls -oFGtpsrh --color=auto --time-style=long-iso --block-size=1 --group-directories-first | ~/ricks.colors.and.commas.py'
 
 # my MOST-FAVORITE go program for pretty-printing the output from gls:
-alias fl='gls -oFGtpsrh --color=auto --time-style=long-iso --block-size=1 --group-directories-first | ~/ricks.colors.and.commas'
+alias fl='gls -oFGtpsrh --color=auto --time-style=full-iso --block-size=1 --group-directories-first | ~/ricks.colors.and.commas'
+alias fld='gls -oFGtpsrh --color=auto --time-style=full-iso --block-size=1 --group-directories-first | ~/ricks.colors.and.commas.DirOnly'
 
 # gls works similarly to ls but was missing the , option and the T option (and I had to have commas! And, endless colors!)

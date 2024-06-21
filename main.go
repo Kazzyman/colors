@@ -7,7 +7,11 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
+	"time"
 )
+
+// build as ricks.colors.and.commas to be used in .bash_profile
 
 /*
 This program is meant to accept standard output via a pipe from the gls command.
@@ -39,6 +43,41 @@ var (
 		"default": "\033[0m",  // reset
 	}
 )
+
+func printFileInfo(path string) {
+	fi, err := os.Stat(path) // fi being a bunch of file information codes
+	// fmt.Printf("fi is %s\n", fi)
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+
+	// used to formulate creationTime -> birth
+	stat := fi.Sys().(*syscall.Stat_t) // stat being a bunch [slice/map or what have you] of numbers
+	// fmt.Printf("stat is %d\n", stat)
+
+	// birthdate and time :: [from:  fi.Sys().(*syscall.Stat_t)  ]
+	creationTime := time.Unix(stat.Birthtimespec.Sec, stat.Birthtimespec.Nsec)
+	// creationTime being info such as :: 2024-06-18 09:59:58.624201859 -0700 PDT // note the fancy inclusion of PDT
+	// fmt.Printf("creationTime is %s\n", creationTime)
+
+	// permissions changed
+	lastStatusChangeTime := time.Unix(stat.Ctimespec.Sec, stat.Ctimespec.Nsec)
+
+	// fmt.Println("File:", path, "  Size:", fi.Size(), "bytes")
+	if creationTime.Format(time.RFC1123) == fi.ModTime().Format(time.RFC1123) {
+		// do not print redundant creation and modification info if the gls has already provided same
+	} else {
+		fmt.Println("                                   originally created:", creationTime.Format(time.RFC1123))
+		fmt.Printf("                                 touched, or %smodified: %s%s\n", colorCyan, fi.ModTime().Format(time.RFC1123), colorReset)
+		if fi.ModTime().Format(time.RFC1123) == lastStatusChangeTime.Format(time.RFC1123) {
+			// if redundant, do not print lastStatusChangeTime
+		} else {
+			fmt.Printf("                           %spermissions|status changed: %s%s\n", colorRed, lastStatusChangeTime.Format(time.RFC1123), colorReset)
+		}
+	}
+	fmt.Println()
+}
 
 // Function to format file sizes with commas
 func formatSize(size int64) string {
@@ -83,8 +122,8 @@ func main() {
 		lineCount++
 
 		if strings.HasPrefix(line, "total") {
-			fmt.Println(line) // print "total" line as-is
-			fmt.Printf("%s  x4096  attributes     links    owner          size        date         time        fileName%s\n", cyanBack, colorReset)
+			// fmt.Println(line) // print "total" line as-is
+			fmt.Printf("%s  x4096  attributes     links    owner          size        date         time        fileName  %s\n", cyanBack, colorReset)
 			continue // get next line
 		}
 
@@ -133,23 +172,25 @@ func main() {
 				blocks, permissions, links, colorCyan, colorReset, owner, formattedSize, colorCyan, colorReset, dateDay, dateMonth, dateYear, time, "-dst",
 				color, fileName, "\033[0m", // reset color
 			)
+			printFileInfo(fileName)
 		} else {
 			fmt.Printf("%7s %11s %4s %slinks%s %8s %12s %sbytes%s  %s-%s-%s %s%s %s%s%s\n",
 				blocks, permissions, links, colorCyan, colorReset, owner, formattedSize, colorCyan, colorReset, dateDay, dateMonth, dateYear, time, "-std",
 				color, fileName, "\033[0m", // reset color
 			)
+			printFileInfo(fileName)
 		}
 
 		if lineCount > 36 {
 			lineCount = 0
-			fmt.Printf("%s  x4096  attributes     links    owner          size        date         time        fileName%s\n", cyanBack, colorReset)
+			fmt.Printf("%s  x4096  attributes     links    owner          size        date         time        fileName  %s\n", cyanBack, colorReset)
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
 		fmt.Fprintln(os.Stderr, "reading standard input:", err)
 	}
-	fmt.Printf("%s  x4096  attributes     links    owner          size        date         time        fileName%s\n", cyanBack, colorReset)
+	fmt.Printf("%s  x4096  attributes     links    owner          size        date         time        fileName  %s\n", cyanBack, colorReset)
 }
 
 func replaceLeading0withSpace(dateDay string) string {
